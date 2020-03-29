@@ -6,6 +6,7 @@ from PyQt5.QtMultimediaWidgets import *
 
 from MainWindow import Ui_MainWindow
 import time
+from PyQt5 import QtCore
 
 
 def hhmmss(ms):
@@ -39,8 +40,14 @@ class PlaylistModel(QAbstractListModel):
     def rowCount(self, index):
         return self.playlist.mediaCount()
 
+class CustomVideoFrame(QVideoWidget):
+    def __init__(self):
+        super(CustomVideoFrame, self).__init__()
+    
+    def enterEvent(self,e):
+        print("on mouse hover")
 
-class VideoPlayer(QMainWindow):
+class VideoPlayer():
     def __init__(self):
         super(VideoPlayer, self).__init__()
 
@@ -49,12 +56,13 @@ class VideoPlayer(QMainWindow):
         for i in range(0, 3):
             for j in range(0, 3):
                 newPlayer = QMediaPlayer()
-                videoWidget = QVideoWidget()
+                videoWidget = CustomVideoFrame()
                 videoWidget.setSizePolicy(
                     QSizePolicy.Expanding, QSizePolicy.Expanding)
                 window.viewer.addWidget(videoWidget, i, j)
                 newPlayer.setVideoOutput(videoWidget)
                 newPlayer.error.connect(window.erroralert)
+                newPlayer.setVolume(0)
                 print("init player " + str(i) + "," + str(j))
                 self.players.append(newPlayer)
 
@@ -66,7 +74,12 @@ class VideoPlayer(QMainWindow):
     def setMedia(self, media):
         for player in self.players:
             print("set media")
-            player.setMedia(media)
+            player.setMedia(media)  
+
+    def eventFilter(self, source, event):
+        if event.type() == QtCore.QEvent.MouseButtonPress:
+            print("on press")
+        return True
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -74,7 +87,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def __init__(self, *args, **kwargs):
         super(MainWindow, self).__init__(*args, **kwargs)
         self.setupUi(self)
-
+        self.setMouseTracking(True)
         self.player = QMediaPlayer()
 
         self.player.error.connect(self.erroralert)
@@ -201,6 +214,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def erroralert(self, *args):
         print(args)
+
+    def mouseMoveEvent(self, event):
+        print(event.pos())
 
 
 if __name__ == '__main__':
