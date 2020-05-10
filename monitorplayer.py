@@ -27,18 +27,15 @@ def hhmmss(ms):
 
 
 class ControlPanel(FloatingWidget):
-    def __init__(self, player, window, videoWidget):
+    def __init__(self, player, window, videoWidget, isFullScreen=False):
         super(ControlPanel, self).__init__()        
         self.isMouseFocused = False
+        self.isFullScreen = isFullScreen
         self.initUI(videoWidget)
         self.player = player
         # self.setParent(window)
 
     def initUI(self, videoWidget):
-        self.container = QWidget(self)
-        self.container.setStyleSheet("background-color:rgba(0,0,0,70%);")
-        self.container.setSizePolicy(
-             QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         sliderContainer = QWidget()
 
@@ -61,8 +58,16 @@ class ControlPanel(FloatingWidget):
         layout.setSpacing(0)
         layout.setContentsMargins(0,0,0,0)
         layout.addWidget(sliderContainer)
-        layout.addWidget(self.container)
         self.setLayout(layout)
+        if self.isFullScreen == True:
+            return
+        
+        self.container = QWidget(self)
+        self.container.setStyleSheet("background-color:rgba(0,0,0,70%);")
+        self.container.setSizePolicy(
+             QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        layout.addWidget(self.container)
 
         playButton = QPushButton()
         playButton.setIcon(QIcon("./images/icons/play.png"))
@@ -122,6 +127,8 @@ class VideoWidget(QVideoWidget):
         self.startTime=0
         self.speed = 1
         self.isFocused = False
+        self.disableUI = False
+        self.isFullScreen = False
     
     def enterEvent(self,e):
         self.window.displayAllUI(False)
@@ -137,14 +144,25 @@ class VideoWidget(QVideoWidget):
     def updateSize(self,size = None):
         if size != None:
             self.size = size
+
         if self.offset != None and self.size != None:
-            x = (self.size.width() + 6) * (self.id % 3) + self.offset.x() + 11
-            y = (self.size.height() + 6) * int((self.id / 3)) + self.size.height() + self.offset.y() - 28
-            self.ui.move(x,y)
-            self.speedLabelContainer.move(x + self.size.width() - 33,(self.size.height() + 6) * int((self.id / 3)) + self.offset.y() + 36)
-            self.speedLabelContainer.resize(self.size.width(), self.size.height())
-            self.speedLabel.resize(self.size.width(), 20)
-            self.ui.resize(self.size.width(), 50)
+            if self.isFullScreen:
+                print("update size")
+                x = self.offset.x() + 20
+                y = self.size.height() + self.offset.y()
+                self.ui.move(x,y)
+                self.speedLabelContainer.move(x + self.size.width() - 33,(self.size.height() + 6) * int((self.id / 3)) + self.offset.y() + 36)
+                self.speedLabelContainer.resize(self.size.width(), self.size.height())
+                self.speedLabel.resize(self.size.width(), 20)
+                self.ui.resize(self.size.width(), 50)
+            else:
+                x = (self.size.width() + 6) * (self.id % 3) + self.offset.x() + 11
+                y = (self.size.height() + 6) * int((self.id / 3)) + self.size.height() + self.offset.y() - 28
+                self.ui.move(x,y)
+                self.speedLabelContainer.move(x + self.size.width() - 33,(self.size.height() + 6) * int((self.id / 3)) + self.offset.y() + 36)
+                self.speedLabelContainer.resize(self.size.width(), self.size.height())
+                self.speedLabel.resize(self.size.width(), 20)
+                self.ui.resize(self.size.width(), 50)
 
     def updatePos(self, pos):
         self.offset = pos
@@ -171,11 +189,13 @@ class VideoWidget(QVideoWidget):
             if position >= self.endTime :
                 self.stop()
 
+        self.position = position
+
     def playbackRateChanged(self,rate):
         self.displaySpeed(True)
 
     def initUI(self, window):
-        self.ui = ControlPanel(self.player, window, self)
+        self.ui = ControlPanel(self.player, window, self, self.isFullScreen)
         self.speedLabelContainer = FloatingWidget()
         self.speedLabelContainer.setContentsMargins(0,0,0,0)
         self.speedLabel = QLabel("1x",self.speedLabelContainer)
@@ -186,8 +206,8 @@ class VideoWidget(QVideoWidget):
     
     def onDurationChanged(self, duration):
         self.duration = duration
-        # if duration > 0:
-        #     self.startPlay()
+        if duration > 0:
+            self.startPlay()
 
     def startPlay(self):
         duration = self.player.duration()
@@ -196,24 +216,39 @@ class VideoWidget(QVideoWidget):
             self.player.play()
 
     def segmentVideo(self, totalDuration):
-        self.endTime = (totalDuration / 9) * (self.id + 1)
-        self.startTime = (int(totalDuration / 9) * self.id)
-        self.player.setPosition(int(totalDuration / 9) * self.id)
+        if self.isFullScreen:
+            self.endTime = totalDuration
+            self.startTime = 0
 
-        self.ui.timeSlider.setMaximum(int(totalDuration / 9))
-        self.ui.stopTimeLabel.setText(hhmmss(self.endTime))
+            self.ui.timeSlider.setMaximum(totalDuration)
+            self.ui.stopTimeLabel.setText(hhmmss(self.endTime))
+        else:
+            self.endTime = (totalDuration / 9) * (self.id + 1)
+            self.startTime = (int(totalDuration / 9) * self.id)
+            self.player.setPosition(int(totalDuration / 9) * self.id)
+
+            self.ui.timeSlider.setMaximum(int(totalDuration / 9))
+            self.ui.stopTimeLabel.setText(hhmmss(self.endTime))
 
     def displayUI(self, isVisible):
         if self.player.isVideoAvailable() == False:
             return
 
+        if self.disableUI:
+            self.ui.setVisible(False)
+            return
+
         self.ui.setVisible(isVisible)
-        self.ui.raise_()
+        if isVisible:
+            self.ui.raise_()
 
         if isVisible == False or self.speed != 1:
             self.displaySpeed(isVisible)
 
     def displaySpeed(self, isVisible):
+        if self.disableUI:
+            self.speedLabelContainer.setVisible(False)
+            return
         self.speedLabelContainer.setVisible(isVisible)
         self.speedLabelContainer.raise_()
 
@@ -245,7 +280,7 @@ class VideoWidget(QVideoWidget):
     def slower(self):
         if self.speed > 1:
             self.speed = self.speed- 1
-        else:
+        elif self.speed > 0.25:
             self.speed = self.speed/ 2.0
 
         self.player.setPlaybackRate(self.speed)        
@@ -257,9 +292,17 @@ class VideoWidget(QVideoWidget):
         self.ui.timeSlider.setValue(position - self.startTime)
         self.ui.timeSlider.blockSignals(False)
 
+    def mouseDoubleClickEvent(self, event):
+        self.window.triggerFullScreen(self.position)
+
+    def addPos(self, time):
+        self.player.setPosition(self.player.position() + time)
+
 class MainWindow(QMainWindow, Ui_MainWindow):
     def __init__(self, *args, **kwargs):
         super(MainWindow, self).__init__(*args, **kwargs)
+        self.fullScreenPlayerWidget = None
+        self.fullScreenContainer = None
         self.setupUi(self)
         self.initMainControlPanel()
         self.setMinimumSize(1226,796)
@@ -268,45 +311,98 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.playerWidgets = []
         self.setAcceptDrops(True)
         self.initPlayers()
+        self.initFullScreenPlayer()
         self.show()
         self.centralWidget.setHandler(self.onMouseLeaveFrame)
+        self.isFullScreen = False
+        self.allPlay = False
+        self.captureKeyboard(self)
 
     def initMainControlPanel(self):
-        playButton = QPushButton()
-        playButton.setIcon(QIcon("./images/icons/play.png"))
-        playButton.setFlat(True)
-        playButton.clicked.connect(self.playAll)
+        self.playButton = QPushButton()
+        self.playButton.setIcon(QIcon("./images/icons/play.png"))
+        self.playButton.setFlat(True)
+        self.playButton.clicked.connect(self.playAll)
+        self.playButton.clicked.connect(self.mousePressEvent)
 
-        pauseButton = QPushButton()
-        pauseButton.setIcon(QIcon("./images/icons/pause.png"))
-        pauseButton.setFlat(True)
-        pauseButton.clicked.connect(self.pauseAll)
+        self.pauseButton = QPushButton()
+        self.pauseButton.setIcon(QIcon("./images/icons/pause.png"))
+        self.pauseButton.setFlat(True)
+        self.pauseButton.clicked.connect(self.pauseAll)
+        self.pauseButton.clicked.connect(self.mousePressEvent)
 
-        stopButton = QPushButton()
-        stopButton.setIcon(QIcon("./images/icons/stop.png"))
-        stopButton.setFlat(True)
-        stopButton.clicked.connect(self.stopAll)
+        self.stopButton = QPushButton()
+        self.stopButton.setIcon(QIcon("./images/icons/stop.png"))
+        self.stopButton.setFlat(True)
+        self.stopButton.clicked.connect(self.stopAll)
+        self.stopButton.clicked.connect(self.mousePressEvent)
 
-        fasterButton = QPushButton()
-        fasterButton.setIcon(QIcon("./images/icons/faster.png"))
-        fasterButton.setFlat(True)
-        fasterButton.clicked.connect(self.fasterAll)
+        self.fasterButton = QPushButton()
+        self.fasterButton.setIcon(QIcon("./images/icons/faster.png"))
+        self.fasterButton.setFlat(True)
+        self.fasterButton.clicked.connect(self.fasterAll)
+        self.fasterButton.clicked.connect(self.mousePressEvent)
 
-        slowerButton = QPushButton()
-        slowerButton.setIcon(QIcon("./images/icons/slower.png"))
-        slowerButton.setFlat(True)
-        slowerButton.clicked.connect(self.slowerAll)
+        self.slowerButton = QPushButton()
+        self.slowerButton.setIcon(QIcon("./images/icons/slower.png"))
+        self.slowerButton.setFlat(True)
+        self.slowerButton.clicked.connect(self.slowerAll)
+        self.slowerButton.clicked.connect(self.mousePressEvent)
 
         self.controlPanelLayout.setContentsMargins(6,10,6,10)
-        self.controlPanelLayout.addWidget(slowerButton)
-        self.controlPanelLayout.addWidget(playButton)
-        self.controlPanelLayout.addWidget(pauseButton)
-        self.controlPanelLayout.addWidget(stopButton)
-        self.controlPanelLayout.addWidget(fasterButton)
+        self.controlPanelLayout.addWidget(self.slowerButton)
+        self.controlPanelLayout.addWidget(self.playButton)
+        self.controlPanelLayout.addWidget(self.pauseButton)
+        self.controlPanelLayout.addWidget(self.stopButton)
+        self.controlPanelLayout.addWidget(self.fasterButton)
 
+    def captureKeyboard(self, target):        
+        QShortcut(QtCore.Qt.Key_Right, target, self.onRightPressed)
+        QShortcut(QtCore.Qt.Key_Left, target, self.onLeftPressed)
+        QShortcut(QtCore.Qt.Key_Space, target, self.onSpacePressed)
+        QShortcut(QtCore.Qt.Key_X, target, self.onXPressed)
+        QShortcut(QtCore.Qt.Key_C, target, self.onCPressed)
 
     def onMouseLeaveFrame(self):
         self.displayAllUI(False)
+
+    def initFullScreenPlayer(self):
+        fullScreenContainer = FloatingWidget()
+
+        layout = QHBoxLayout()
+        fullScreenContainer.setAttribute(Qt.WA_TranslucentBackground, False)
+        fullScreenContainer.setStyleSheet("background-color:red;")
+        fullScreenContainer.keyPressEvent = self.onFullScreenKeyPress
+
+        
+        fullScreenContainer.raise_()
+        fullScreenContainer.setVisible(False)
+
+        print(self.width())
+        videoWidget = VideoWidget()
+        videoWidget.isFullScreen = True
+        # videoWidget.disableUI = True
+        videoWidget.setParent(fullScreenContainer)
+        videoWidget.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding)
+        videoWidget.setStyleSheet("background-color:red")
+        layout.addWidget(videoWidget)
+        player = videoWidget.initPlayer(-1, fullScreenContainer)
+        videoWidget.initUI(self)
+        # videoWidget.ui.setVisible(False)
+        videoWidget.updatePos(self.pos())
+        videoWidget.updateSize(self.size())
+        self.fullScreenPlayer = player
+        self.fullScreenPlayerWidget = videoWidget
+        self.fullScreenContainer = fullScreenContainer
+        self.updateFullScreenSize()
+
+        fullScreenContainer.setLayout(layout)
+        self.captureKeyboard(fullScreenContainer)
+        self.captureKeyboard(videoWidget.ui)
+        self.captureKeyboard(videoWidget.speedLabelContainer)
+        # self.players.append(player)
+        # self.playerWidgets.append(videoWidget)
     
     def initPlayers(self):
         count = 0
@@ -318,6 +414,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.videoFrame.addWidget(videoWidget, i, j)
                 player = videoWidget.initPlayer(count, self.videoFrame)
                 videoWidget.initUI(self)
+                videoWidget.keyPressEvent = self.keyPressEvent
+                self.captureKeyboard(videoWidget.ui)
+                self.captureKeyboard(videoWidget.speedLabelContainer)
                 self.players.append(player)
                 self.playerWidgets.append(videoWidget)
                 count+=1
@@ -344,9 +443,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         for player in self.players:
             player.setMedia(url)
 
+        self.fullScreenPlayer.setMedia(url)
+
     def playAll(self):
         for vw in self.playerWidgets:
             vw.play()
+        self.allPlay = True
 
     def pauseAll(self):
         for vw in self.playerWidgets:
@@ -375,19 +477,138 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     
     def moveEvent(self, e):
         self.updateControlPanel(e.pos())
+        self.updateFullScreenSize()
 
     def updateControlPanel(self, pos):
         for vw in self.playerWidgets:
             vw.updatePos(pos)
+        if self.fullScreenPlayerWidget != None:
+            self.fullScreenPlayerWidget.updatePos(pos)
 
     def raiseAllUI(self):
+        if self.isFullScreen:
+            self.fullScreenContainer.raise_()
+            return
+
         for vw in self.playerWidgets:
             vw.ui.raise_()
             vw.speedLabelContainer.raise_()
+        
+        print("raise all ui")
 
     def displayAllUI(self, isShown):
         for vw in self.playerWidgets:
             vw.displayUI(isShown)
+        
+    def resizeEvent(self, e):
+        self.updateFullScreenSize()
+    
+    def updateFullScreenSize(self):
+        if self.fullScreenContainer != None:
+            self.fullScreenContainer.move(self.x() + 10,self.y() + 50)
+            self.fullScreenContainer.resize(self.width() - 20, self.height() - 80)
+            self.fullScreenContainer.raise_()
+
+    def onFullScreenKeyPress(self, e):
+        if e.key() == QtCore.Qt.Key_Escape:
+            self.triggerFullScreen(0)
+
+    def keyPressEvent(self,e):
+        if e.key() == QtCore.Qt.Key_Space:
+            self.triggerPlay()
+        elif e.key() == QtCore.Qt.RightArrow:
+            self.fasterAll()
+        elif e.key() == QtCore.Qt.LeftArrow:
+            self.slowerAll()
+
+    def triggerFullScreen(self, time):
+        if self.isFullScreen:
+            self.fullScreenContainer.setVisible(False)
+            
+            self.playButton.clicked.disconnect(self.fullScreenPlayerWidget.play)
+            self.pauseButton.clicked.disconnect(self.fullScreenPlayerWidget.pause)
+            self.fasterButton.clicked.disconnect(self.fullScreenPlayerWidget.faster)
+            self.slowerButton.clicked.disconnect(self.fullScreenPlayerWidget.slower)
+            self.stopButton.clicked.disconnect(self.fullScreenPlayerWidget.stop)
+
+            self.playButton.clicked.connect(self.playAll)
+            self.pauseButton.clicked.connect(self.pauseAll)
+            self.fasterButton.clicked.connect(self.fasterAll)
+            self.slowerButton.clicked.connect(self.slowerAll)
+            self.stopButton.clicked.connect(self.stopAll)
+            self.playAll()
+            self.isFullScreen = False
+            self.fullScreenPlayer.setPlaybackRate(1)
+        else:
+            self.pauseAll()
+            self.fullScreenContainer.setVisible(True)
+            self.fullScreenPlayer.setPosition(time)
+            self.fullScreenPlayerWidget.play()
+            self.playButton.clicked.disconnect(self.playAll)
+            self.pauseButton.clicked.disconnect(self.pauseAll)
+            self.fasterButton.clicked.disconnect(self.fasterAll)
+            self.slowerButton.clicked.disconnect(self.slowerAll)
+            self.stopButton.clicked.disconnect(self.stopAll)
+            
+            self.playButton.clicked.connect(self.fullScreenPlayerWidget.play)
+            self.pauseButton.clicked.connect(self.fullScreenPlayerWidget.pause)
+            self.fasterButton.clicked.connect(self.fullScreenPlayerWidget.faster)
+            self.slowerButton.clicked.connect(self.fullScreenPlayerWidget.slower)
+            self.stopButton.clicked.connect(self.fullScreenPlayerWidget.stop)
+            self.isFullScreen = True
+
+    def triggerPlay(self):
+        if self.allPlay:
+            self.pauseAll()
+        else:
+            self.playAll()
+
+    
+    def onRightPressed(self):
+        print("on right press")
+        if self.isFullScreen:
+            self.fullScreenPlayerWidget.addPos(5000)
+        else:
+            for player in self.playerWidgets:
+                player.addPos(5000)
+
+    def onLeftPressed(self):
+        if self.isFullScreen:
+            self.fullScreenPlayerWidget.addPos(-5000)
+        else:
+            for player in self.playerWidgets:
+                player.addPos(-5000)
+
+    def onSpacePressed(self):
+        print("on space preesed")
+        if self.isFullScreen:
+            if self.fullScreenPlayer.state() == self.fullScreenPlayer.PlayingState:
+                self.fullScreenPlayerWidget.pause()
+            else:
+                self.fullScreenPlayerWidget.play()
+        else:
+            allStop = True
+            for player in self.players:
+                if player.state() == player.PlayingState:
+                    allStop = False
+                    break;
+
+            if allStop:
+                self.playAll()
+            else:
+                self.pauseAll()
+    
+    def onXPressed(self):
+        if self.isFullScreen:
+            self.fullScreenPlayerWidget.slower()
+        else:
+            self.slowerAll()
+
+    def onCPressed(self):
+        if self.isFullScreen:
+            self.fullScreenPlayerWidget.faster()
+        else:
+            self.fasterAll()
 
 if __name__ == '__main__':
     app = QApplication([])
